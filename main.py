@@ -1,156 +1,189 @@
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import numpy as np
-from os.path import exists
+import csv
 
-G = 6.67430 * 10 ** (-11)
-
-number = int(input("Select how many bodies you want: "))
-time_step = float(
-    input("Input time step. A smaller time step gives more accurate results: ")
-)
-lengthofsimul = float(
-    input("Input the amount of time you want to run the simulation for: ")
-)
+G = 6.67 * 10 ** (-11)
+C = 0.00596
+AU = 1.496 * (10 ** (11))
+time_step = 1000000
 print("The following simulation assumes point-like masses")
 print("Distances in AU and mass in solar-mass")
 
-# Initialize Measurable quantities
-abs_pos = [[0.0, 0.0, 0.0] for i in range(number)]
-rel_pos = [[[0.0, 0.0, 0.0] for j in range(number)] for i in range(number)]
-velocity = [[0.0, 0.0, 0.0] for i in range(number)]
-mass = [[0.0] for i in range(number)]
-accln = [[0.0, 0.0, 0.0] for i in range(number)]
-
-# Take Values from file
-if exists("nbodyparameters.csv"):
-    f = open("nbodyparameters", "r")
-    pass
+filename = "parameters.csv"
 
 
-# Accept initial parameters
-def AcceptParameters(position, velocity, mass):
-    for i in range(number):
-        # Position
-        position[i][0] = float(
-            input("Please input Co-ordinate {} of particle {}: ".format(1, i + 1))
-        )
-        position[i][1] = float(
-            input("Please input Co-ordinate {} of particle {}: ".format(2, i + 1))
-        )
-        position[i][2] = float(
-            input("Please input Co-ordinate {} of particle {}: ".format(3, i + 1))
-        )
-        # Velocity
-        velocity[i][0] = float(
-            input(
-                "Please input Velocity Component {} of particle {}: ".format(1, i + 1)
-            )
-        )
-        velocity[i][1] = float(
-            input(
-                "Please input Velocity Component {} of particle {}: ".format(2, i + 1)
-            )
-        )
-        velocity[i][2] = float(
-            input(
-                "Please input Velocity Component {} of particle {}: ".format(3, i + 1)
-            )
-        )
-        # Mass
-        mass[i] = float(input("Please input Mass of particle {}: ".format(i + 1)))
-    return position, velocity, mass
+class simulation_state:
+    def __init__(self, filename):
+        (
+            self.body_id,
+            self.mass,
+            self.x_pos,
+            self.y_pos,
+            self.z_pos,
+            self.vX,
+            self.vY,
+            self.vZ,
+            self.aX,
+            self.aY,
+            self.aZ,
+        ) = read_parameters(filename)
+        self.time_step = 1000000
+        self.x_positions = np.array(self.x_pos)
+        self.y_positions = np.array(self.y_pos)
+        self.z_positions = np.array(self.z_pos)
+
+
+def read_parameters(filename):
+    body_ids = []
+    masses = []
+    xs = []
+    ys = []
+    zs = []
+    vXs = []
+    vYs = []
+    vZs = []
+    aXs = []
+    aYs = []
+    aZs = []
+
+    try:
+        with open(filename, mode="r") as file:
+            csv_reader = csv.DictReader(file)
+
+            for row in csv_reader:
+                body_ids.append(int(row["body_id"]))
+                masses.append(float(row["mass"]))
+                xs.append(float(row["x"]))
+                ys.append(float(row["y"]))
+                zs.append(float(row["z"]))
+                vXs.append(float(row["vx"]))
+                vYs.append(float(row["vy"]))
+                vZs.append(float(row["vz"]))
+                aXs.append(float(row["ax"]))
+                aYs.append(float(row["ay"]))
+                aZs.append(float(row["az"]))
+
+    except FileNotFoundError:
+        print(f"Error: The file {filename} was not found.")
+        return None
+    except KeyError as e:
+        print(f"Error: Missing column {e} in the CSV file.")
+        return None
+    except ValueError as e:
+        print(f"Error: Invalid value found in the CSV file. {e}")
+        return None
+
+    return (
+        np.array(body_ids),
+        np.array(masses),
+        np.array(xs),
+        np.array(ys),
+        np.array(zs),
+        np.array(vXs),
+        np.array(vYs),
+        np.array(vZs),
+        np.array(aXs),
+        np.array(aYs),
+        np.array(aZs),
+    )
+
+
+state = simulation_state(filename)
+n = len(state.body_id)
 
 
 # Get acceleration
-def findaccln(position, ds, accln):
-    for i in range(number):
-        accln[i][0] = 0
-        accln[i][1] = 0
-        accln[i][2] = 0
-        for j in range(number):
+def findaccln(x_pos, y_pos, z_pos, aX, aY, aZ, mass):
+    for i in range(n):
+        for j in range(n):
             if i > j:
-                # Find Relative Position
-                ds[i][j][0] = position[i][0] - position[j][0]
-                ds[i][j][1] = position[i][1] - position[j][1]
-                ds[i][j][2] = position[i][2] - position[j][2]
                 dist = (
-                    ((ds[i][j][0]) ** 2) + ((ds[i][j][1]) ** 2) + ((ds[i][j][2]) ** 2)
+                    ((x_pos[i] - x_pos[j]) ** 2)
+                    + ((y_pos[i] - y_pos[j]) ** 2)
+                    + ((z_pos[i] - z_pos[j]) ** 2)
                 ) ** (3 / 2)
-                accx = -(0.00596 * mass[j] * ds[i][j][0]) / dist
-                accy = -(0.00596 * mass[j] * ds[i][j][1]) / dist
-                accz = -(0.00596 * mass[j] * ds[i][j][2]) / dist
-                accln[i][0] = accln[i][0] + (accx)
-                accln[i][1] = accln[i][1] + (accy)
-                accln[i][2] = accln[i][2] + (accz)
-                accln[j][0] = accln[j][0] - (mass[i] / mass[j]) * (accx)
-                accln[j][1] = accln[j][1] - (mass[i] / mass[j]) * (accy)
-                accln[j][2] = accln[j][2] - (mass[i] / mass[j]) * (accz)
-    return ds, accln
-
-
-abs_pos, velocity, mass = AcceptParameters(abs_pos, velocity, mass)
-rel_pos, accln = findaccln(abs_pos, rel_pos, accln)
+                aX[i] = -(C * mass[j] * (x_pos[i] - x_pos[j])) / dist
+                aY[i] = -(C * mass[j] * (y_pos[i] - y_pos[j])) / dist
+                aZ[i] = -(C * mass[j] * (z_pos[i] - z_pos[j])) / dist
+                aX[j] = -(mass[i] / mass[j]) * (aX[i])
+                aY[j] = -(mass[i] / mass[j]) * (aY[i])
+                aZ[j] = -(mass[i] / mass[j]) * (aZ[i])
+    return aX, aY, aZ
 
 
 # Update
-def updateproperties(position, velocity, accln, timestep, ds):
-    ds, accln = findaccln(abs_pos, rel_pos, accln)
-    # print(accln)
-    for i in range(number):
-        velocity[i][0] = velocity[i][0] + accln[i][0] * timestep
-        velocity[i][1] = velocity[i][1] + accln[i][1] * timestep
-        velocity[i][2] = velocity[i][2] + accln[i][2] * timestep
-        position[i][0] = position[i][0] + velocity[i][0] * timestep / (
-            1.496 * (10 ** (11))
-        )
-        position[i][1] = position[i][1] + velocity[i][1] * timestep / (
-            1.496 * (10 ** (11))
-        )
-        position[i][2] = position[i][2] + velocity[i][2] * timestep / (
-            1.496 * (10 ** (11))
-        )
-    return position, velocity, accln, ds
+def updateproperties(x_pos, y_pos, z_pos, vX, vY, vZ, aX, aY, aZ, mass, timestep):
+    aX, aY, aZ = findaccln(x_pos, y_pos, z_pos, aX, aY, aZ, mass)
+    vX = vX + aX * timestep
+    vY = vY + aY * timestep
+    vZ = vZ + aZ * timestep
+    x_pos = x_pos + vX * timestep / (AU)
+    y_pos = y_pos + vY * timestep / (AU)
+    z_pos = z_pos + vZ * timestep / (AU)
+    return x_pos, y_pos, z_pos, vX, vY, vZ, aX, aY, aZ
 
 
-Kinetic_Energy = [[0] for i in range(number)]
-Potential_Energy = [[0.0 for j in range(number)] for k in range(number)]
+Kinetic_Energy = [[0] for i in range(n)]
+Potential_Energy = [[0.0 for j in range(n)] for k in range(n)]
 
 
-# Calculate Energies
-def energy(position, ds, velocity, mass, G):
-    for i in range(number):
-        # Kinetic energy here
-        Kinetic_Energy[i] = (
-            (
-                0.5
-                * mass[i]
-                * (velocity[i][0] ** 2 + velocity[i][1] ** 2 + velocity[i][2] ** 2)
-            )
-            * 1.989
-            * (10**30)
-        )
-        for j in range(number):
-            if i > j:
-                # Potential energy here
-
-                ds[i][j][0] = position[i][0] - position[j][0]
-                ds[i][j][1] = position[i][1] - position[j][1]
-                ds[i][j][2] = position[i][2] - position[j][2]
-                dist = (
-                    ((ds[i][j][0]) ** 2) + ((ds[i][j][1]) ** 2) + ((ds[i][j][2]) ** 2)
-                ) ** (1 / 2)
-                Potential_Energy[i][j] = -(
-                    G * mass[i] * mass[j] * ((1.989 * (10**30)) ** 2) / dist
-                )
-    total_energy = sum(Kinetic_Energy) + sum(sum(Potential_Energy, []))
-    return total_energy
+fig = plt.figure()
+ax = fig.add_subplot(projection="3d")
 
 
-# Display properties
-for k in range(round(lengthofsimul / time_step)):
-    abs_pos, velocity, accln, rel_pos = updateproperties(
-        abs_pos, velocity, accln, time_step, rel_pos
+ax.set_xlim(-20, 20)
+ax.set_ylim(-20, 20)
+ax.set_zlim(-20, 20)
+
+scatter = ax.scatter([], [], [])
+
+
+def update(frame):
+    (
+        state.x_pos,
+        state.y_pos,
+        state.z_pos,
+        state.vX,
+        state.vY,
+        state.vZ,
+        state.aX,
+        state.aY,
+        state.aZ,
+    ) = updateproperties(
+        state.x_pos,
+        state.y_pos,
+        state.z_pos,
+        state.vX,
+        state.vY,
+        state.vZ,
+        state.aX,
+        state.aY,
+        state.aZ,
+        state.mass,
+        state.time_step,
     )
-    print(abs_pos)
-    # # Use To verify the code
-    # total_energy = energy(abs_pos, rel_pos, velocity, mass, G)
-    # print(total_energy)
+
+    state.x_positions = np.append(state.x_positions, state.x_pos)
+    state.y_positions = np.append(state.y_positions, state.y_pos)
+    state.z_positions = np.append(state.z_positions, state.z_pos)
+
+    scatter._offsets3d = (state.x_pos, state.y_pos, state.z_pos)
+    return (scatter,)
+
+
+# Create animation
+ani = animation.FuncAnimation(
+    fig, update, frames=1000, interval=20, blit=False, repeat=True
+)
+
+
+# Set labels and title
+ax.set_xlabel("X axis")
+ax.set_ylabel("Y axis")
+ax.set_zlabel("Z axis")
+ax.set_title("3D Visualization of Gravitational Bodies")
+
+# Show the plot
+plt.show()
+
